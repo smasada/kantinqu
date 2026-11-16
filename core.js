@@ -150,6 +150,10 @@ window.KQ = (function () {
     return path;
   };
   KQ.publicUrl = (path) => sb.storage.from('menu-images').getPublicUrl(path).data.publicUrl;
+  KQ.avatarUrl = (path) => sb.storage.from('avatars').getPublicUrl(path).data.publicUrl;
+  KQ.avaHtml = (p) => p && p.avatar_url
+    ? `<div class="ava"><img src="${esc(KQ.avatarUrl(p.avatar_url))}" alt="" loading="lazy"></div>`
+    : `<div class="ava">${esc(((p && p.full_name) || '?').trim().charAt(0).toUpperCase())}</div>`;
   KQ.signedUrl = async (path) => { const { data } = await sb.storage.from('support-attachments').createSignedUrl(path, 600); return data ? data.signedUrl : null; };
 
   /* ---------- Bahasa ---------- */

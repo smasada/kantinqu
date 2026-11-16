@@ -99,6 +99,7 @@ window.KQ_T = {
   'f.canteen_name': ['Nama kantin', 'Canteen name'], 'f.canteen_label': ['Identitas kantin', 'Canteen label'], 'f.canteen_location': ['Lokasi / deskripsi kantin', 'Canteen location / description'],
   'f.canteen_photo': ['Foto kantin', 'Canteen photo'], 'f.menu_name': ['Nama makanan', 'Food name'], 'f.description': ['Deskripsi', 'Description'], 'f.category': ['Kategori', 'Category'],
   'f.price': ['Harga (Rp)', 'Price (Rp)'], 'f.priceHint': ['Angka saja, tanpa titik.', 'Numbers only.'], 'f.stock': ['Stok', 'Stock'], 'f.photo': ['Foto', 'Photo'],
+  'f.avatar': ['Foto profil', 'Profile photo'], 'f.avatarHint': ['JPG, PNG, atau WebP, maksimal 2 MB.', 'JPG, PNG or WebP, max 2 MB.'], 'f.removeAvatar': ['Hapus foto profil', 'Remove profile photo'],
   'f.photoHint': ['JPG, PNG, atau WebP, maksimal 2 MB.', 'JPG, PNG or WebP, max 2 MB.'], 'f.attachment': ['Lampiran gambar', 'Image attachment'], 'f.attachHint': ['JPG, PNG, atau WebP, maksimal 3 MB.', 'JPG, PNG or WebP, max 3 MB.'],
   'f.user_type': ['Jenis pengguna', 'User type'], 'f.subject': ['Subjek', 'Subject'], 'f.related_order': ['Pesanan terkait', 'Related order'], 'f.message': ['Pesan', 'Message'],
   'f.student_number': ['NIS / ID siswa', 'Student ID'], 'f.lines': ['Data', 'Data'], 'f.contact_email': ['Email', 'Email'], 'f.contact_phone': ['Telepon', 'Phone'],

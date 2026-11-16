@@ -94,7 +94,7 @@
     if (role === 'seller') canteen = await q(sb.from('canteens').select('*').eq('seller_id', S.uid).maybeSingle());
     const kv = (k, v) => `<div class="kv"><span>${esc(t(k))}</span><span>${esc(v || '-')}</span></div>`;
     return `<h2>${esc(t('nav.profile'))}</h2>
-      <div class="card"><div class="row" style="margin-bottom:10px"><div class="ava">${esc((p.full_name || '?').trim().charAt(0).toUpperCase())}</div><div><b>${esc(p.full_name)}</b><br><span class="badge gray">${esc(t('role.' + role))}</span> ${role === 'buyer' ? KQ.vBadge(p.verification_status) : ''}</div></div>
+      <div class="card"><div class="row" style="margin-bottom:10px">${KQ.avaHtml(p)}<div><b>${esc(p.full_name)}</b><br><span class="badge gray">${esc(t('role.' + role))}</span> ${role === 'buyer' ? KQ.vBadge(p.verification_status) : ''}</div></div>
         ${extra}
         ${role === 'buyer' ? kv('f.class', p.class) : ''}
         ${kv('f.username', p.username)}${kv('f.email', p.email)}${kv('f.phone', p.phone_number)}
@@ -113,6 +113,7 @@
     const c = role === 'seller' ? await q(sb.from('canteens').select('*').eq('seller_id', S.uid).maybeSingle()) : null;
     KQ.openModal(`<h3>${esc(t('btn.editProfile'))}</h3>
       <form data-form="editprofile" novalidate>
+        <div class="row" style="margin-bottom:12px">${KQ.avaHtml(p)}<div class="fld" style="flex:1;margin:0"><label for="f-avatar">${esc(t('f.avatar'))} <span class="muted sm">(${esc(t('f.optional'))})</span></label><input id="f-avatar" name="avatar" type="file" accept="image/jpeg,image/png,image/webp"><div class="hint">${esc(t('f.avatarHint'))}</div>${p.avatar_url ? `<label class="sm" style="display:flex;gap:6px;align-items:center;margin-top:6px"><input type="checkbox" name="remove_avatar"> ${esc(t('f.removeAvatar'))}</label>` : ''}</div></div>
         ${role === 'buyer' ? `<div class="fld"><label>${esc(t('f.full_name'))} / ${esc(t('f.class'))}</label><input value="${esc(p.full_name)} - ${esc(p.class || '')}" readonly><div class="hint">${esc(t('profile.identityLocked'))}</div></div>` : fld('full_name', { val: p.full_name })}
         ${fld('username', { val: p.username })}
         ${fld('phone', { type: 'tel', val: p.phone_number || '', req: role === 'seller' })}
@@ -130,6 +131,10 @@
     if (phone && !PHONE_RE.test(phone)) throw bad('err.phone');
     const upd = { username, phone_number: phone || null };
     if (role !== 'buyer') upd.full_name = val(f, 'full_name');
+    const oldAva = S.profile.avatar_url;
+    const avFile = f.elements.avatar && f.elements.avatar.files[0];
+    if (avFile) upd.avatar_url = await KQ.upload('avatars', avFile, 2);
+    else if (f.elements.remove_avatar && f.elements.remove_avatar.checked) upd.avatar_url = null;
     await q(sb.from('users').update(upd).eq('id', S.uid));
     if (role === 'seller') {
       const cu = { canteen_name: val(f, 'canteen_name'), canteen_label: val(f, 'canteen_label'), canteen_location: val(f, 'canteen_location') || null };
@@ -137,6 +142,7 @@
       if (file) cu.image_url = await KQ.upload('menu-images', file, 2);
       await q(sb.from('canteens').update(cu).eq('seller_id', S.uid));
     }
+    if (oldAva && 'avatar_url' in upd && upd.avatar_url !== oldAva) { try { await sb.storage.from('avatars').remove([oldAva]); } catch (e) { /* abaikan */ } }
     await KQ.loadProfile(); KQ.closeModals(); KQ.ok('ok.profileSaved'); KQ.render({ keep: true });
   };
 
