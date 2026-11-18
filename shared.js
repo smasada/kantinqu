@@ -40,7 +40,7 @@
     if (!o) return KQ.back('#/orders') + KQ.empty('list', t('order.notFound'));
     const hist = (o.order_status_history || []).sort((x, y) => new Date(x.changed_at) - new Date(y.changed_at));
     const active = ['pending', 'processing', 'ready'].includes(o.order_status);
-    const btn = (s, label, cls) => `<button class="btn ${cls || 'primary'}" data-act="ostatus" data-id="${o.id}" data-s="${s}">${esc(label)}</button>`;
+    const btn = (s, label, cls) => `<button class="btn ${cls || 'primary'}" data-act="ostatus" data-id="${o.id}" data-no="${esc(o.order_number)}" data-s="${s}">${esc(label)}</button>`;
     let actions = '';
     if (role === 'seller' && active) {
       const next = { pending: ['processing', 'btn.process'], processing: ['ready', 'btn.markReady'], ready: ['completed', 'btn.complete'] }[o.order_status];
@@ -48,7 +48,7 @@
     }
     return `${KQ.back('#/orders')}
       <div class="row between"><h2 style="margin:0">${esc(o.order_number)}</h2>${KQ.statusBadge(o.order_status)}</div>
-      ${role === 'buyer' && active ? `<div class="code-box" style="margin:12px 0"><span class="sm muted">${esc(t('order.pickupCode'))}</span><b>${esc(o.pickup_code)}</b><span class="sm">${esc(t('order.pickupHint'))}</span></div>` : ''}
+      ${role === 'buyer' && active ? `<div class="code-box" style="margin:12px 0"><span class="sm muted">${esc(t('order.pickupCode'))}</span><div class="qr" id="qr" data-p="${esc('KQ1|' + o.order_number + '|' + o.pickup_code)}" aria-label="QR"></div><b>${esc(o.pickup_code)}</b><span class="sm">${esc(t('order.qrHint'))}</span></div>` : ''}
       ${o.order_status === 'ready' && role === 'buyer' ? `<div class="notice ok" style="margin-bottom:12px">${ic('check')}<span>${esc(t('order.readyHint'))}</span></div>` : ''}
       ${o.order_status === 'cancelled' ? `<div class="notice bad" style="margin:12px 0"><div><b>${esc(t('order.cancelReason'))}</b><br>${esc(o.cancellation_reason || '-')}${role === 'seller' ? `<br><span class="sm">${esc(t('order.stockHint'))}</span>` : ''}</div></div>` : ''}
       <div class="card" style="margin-top:12px">
@@ -64,6 +64,91 @@
       ${actions}
       <div class="card" style="margin-top:12px"><h3>${esc(t('order.history'))}</h3><ul class="timeline">${hist.map((h) => `<li><b>${esc(t('status.' + h.new_status))}</b> <span class="muted sm">${esc(fmt(h.changed_at))}</span></li>`).join('')}</ul></div>`;
   };
+
+  /* ---- QR pengambilan: tampil di HP pembeli, dipindai di HP penjual ---- */
+  const QR_URL = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js';
+  const JSQR_URL = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
+
+  KQ.hooks.order = () => {
+    const el = document.getElementById('qr');
+    if (!el) return;
+    KQ.loadScript(QR_URL).then(() => {
+      const qr = window.qrcode(0, 'M'); qr.addData(el.dataset.p); qr.make();
+      el.innerHTML = qr.createSvgTag(4, 2);
+      const svg = el.querySelector('svg'); if (!svg) return;
+      if (!svg.getAttribute('viewBox')) svg.setAttribute('viewBox', '0 0 ' + parseFloat(svg.getAttribute('width')) + ' ' + parseFloat(svg.getAttribute('height')));
+      svg.removeAttribute('width'); svg.removeAttribute('height');
+    }).catch(() => el.remove());
+  };
+
+  function askPickupCode(orderNo) {
+    return new Promise((resolve) => {
+      const m = KQ.openModal(`<h3>${esc(t('scan.title'))}</h3>
+        <div class="scanbox"><video id="sc-v" playsinline muted autoplay></video></div>
+        <p class="muted sm" id="sc-s">${esc(t('scan.starting'))}</p>
+        <div id="sc-m" hidden><div class="fld"><label for="sc-c">${esc(t('complete.code'))}</label><input id="sc-c" maxlength="4" inputmode="numeric" autocomplete="off"></div><div class="form-err" id="sc-e"></div></div>
+        <div class="row end"><button class="btn ghost" data-r="cancel">${esc(t('btn.cancel'))}</button><button class="btn outline" data-r="manual">${esc(t('scan.manual'))}</button><button class="btn primary" data-r="go" hidden>${esc(t('btn.complete'))}</button></div>`, false);
+      const $m = (sel) => m.querySelector(sel);
+      let stream = null, done = false, timer = null;
+      const finish = (code) => {
+        if (done) return; done = true; clearTimeout(timer);
+        if (stream) stream.getTracks().forEach((x) => x.stop());
+        m.remove(); resolve(code);
+      };
+      const status = (txt, isBad) => { const s = $m('#sc-s'); if (!s) return; s.textContent = txt; s.classList.toggle('err-text', !!isBad); };
+      const showManual = () => { $m('#sc-m').hidden = false; $m('[data-r="go"]').hidden = false; $m('[data-r="manual"]').hidden = true; $m('#sc-c').focus(); };
+      m.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-r]'); if (!b) return;
+        if (b.dataset.r === 'cancel') finish(null);
+        else if (b.dataset.r === 'manual') showManual();
+        else if (b.dataset.r === 'go') {
+          const v = $m('#sc-c').value.trim();
+          if (!v) { $m('#sc-e').textContent = t('err.required'); return; }
+          finish(v);
+        }
+      });
+      const handle = (text) => {
+        const p = String(text || '').split('|');
+        if (p.length !== 3 || p[0] !== 'KQ1') { status(t('scan.invalid'), true); return; }
+        if (p[1] !== orderNo) { status(t('scan.wrong', { no: orderNo }), true); return; }
+        status(t('scan.ok'));
+        finish(p[2]);
+      };
+      (async () => {
+        try {
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('nocam');
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+          if (done || !m.isConnected) { stream.getTracks().forEach((x) => x.stop()); return; }
+          const v = $m('#sc-v'); v.srcObject = stream; await v.play().catch(() => {});
+          status(t('scan.hint'));
+          let decode = null;
+          if ('BarcodeDetector' in window) {
+            try { const det = new window.BarcodeDetector({ formats: ['qr_code'] }); decode = async () => { const r = await det.detect(v); return r[0] ? r[0].rawValue : null; }; } catch (e) { decode = null; }
+          }
+          if (!decode) {
+            await KQ.loadScript(JSQR_URL);
+            const cv = document.createElement('canvas'); const cx = cv.getContext('2d', { willReadFrequently: true });
+            decode = async () => {
+              if (!v.videoWidth) return null;
+              const w = Math.min(v.videoWidth, 640), hh = Math.round(w * v.videoHeight / v.videoWidth);
+              cv.width = w; cv.height = hh; cx.drawImage(v, 0, 0, w, hh);
+              const r = window.jsQR(cx.getImageData(0, 0, w, hh).data, w, hh);
+              return r ? r.data : null;
+            };
+          }
+          let last = '';
+          const tick = async () => {
+            if (done) return;
+            if (!m.isConnected) { finish(null); return; }
+            try { const txt = await decode(); if (txt && txt !== last) { last = txt; handle(txt); } else if (!txt) last = ''; } catch (e) { /* abaikan */ }
+            if (!done) timer = setTimeout(tick, 250);
+          };
+          tick();
+        } catch (e) { status(t('scan.denied'), true); showManual(); }
+      })();
+    });
+  }
+
   KQ.acts.ostatus = async (el) => {
     const id = el.dataset.id, s = el.dataset.s; let reason = null, code = null;
     if (s === 'cancelled') {
@@ -71,8 +156,8 @@
       if (!c) return; reason = c.value;
     }
     if (s === 'completed') {
-      const c = await KQ.confirmBox({ title: t('complete.title'), msg: t('complete.msg'), field: { label: t('complete.code'), required: true, single: true, mode: 'numeric', max: 4 }, ok: t('btn.complete') });
-      if (!c) return; code = c.value;
+      code = await askPickupCode(el.dataset.no);
+      if (!code) return;
     }
     await KQ.busy(el, async () => {
       await q(sb.rpc('update_order_status', { p_order: id, p_status: s, p_reason: reason, p_code: code }));
