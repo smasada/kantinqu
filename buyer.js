@@ -107,7 +107,7 @@
           ${m.description ? `<p>${esc(m.description)}</p>` : ''}
           <p class="muted sm">${esc(t('menu.stock'))}: <b>${m.stock}</b> &middot; ${esc(m.canteens.canteen_name)} (${esc(m.canteens.canteen_label)})</p>
           <div class="row between" style="margin-top:12px">
-            <div class="qty"><button data-act="dqty" data-d="-1" aria-label="${esc(t('btn.minus'))}" ${out ? 'disabled' : ''}>${ic('minus')}</button><span id="qty">${KQ.V.qty}</span><button data-act="dqty" data-d="1" aria-label="${esc(t('btn.plus'))}" ${out ? 'disabled' : ''}>${ic('plus')}</button></div>
+            <div class="qty"><button data-act="dqty" data-d="-1" aria-label="${esc(t('btn.minus'))}" ${out ? 'disabled' : ''}>${ic('minus')}</button><input id="qty" class="qty-in" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" value="${KQ.V.qty}" data-change="qtyset" onfocus="this.select()" aria-label="${esc(t('f.qty'))}" ${out ? 'disabled' : ''}><button data-act="dqty" data-d="1" aria-label="${esc(t('btn.plus'))}" ${out ? 'disabled' : ''}>${ic('plus')}</button></div>
             <button class="btn primary" data-act="addcart" ${out ? 'disabled' : ''}>${ic('cart')} ${esc(t('btn.addToCart'))}</button>
           </div>
         </div></div>`;
@@ -116,9 +116,23 @@
     const V = KQ.V; const n = V.qty + Number(el.dataset.d);
     if (n < 1) return;
     if (n > V.menu.stock) return KQ.toast(t('err.EXCEEDS_STOCK'), 'err');
-    V.qty = n; KQ.$('#qty').textContent = n;
+    V.qty = n; KQ.$('#qty').value = n;
+  };
+  /* Jumlah diketik manual: hanya angka bulat 1..stok. */
+  KQ.parseQty = (raw, stock) => {
+    const n = parseInt(String(raw).replace(/\D/g, ''), 10);
+    if (!n || n < 1) return { n: null };
+    if (n > stock) return { n: stock, over: true };
+    return { n };
+  };
+  KQ.inputs.qtyset = (el) => {
+    const V = KQ.V; const r = KQ.parseQty(el.value, V.menu.stock);
+    if (r.n === null) { el.value = V.qty; return; }
+    if (r.over) KQ.toast(t('err.EXCEEDS_STOCK'), 'err');
+    V.qty = r.n; el.value = r.n;
   };
   KQ.acts.addcart = async (el) => {
+    const qi = KQ.$('#qty'); if (qi) KQ.inputs.qtyset(qi);
     await KQ.busy(el, async () => {
       await q(sb.rpc('cart_set', { p_menu: KQ.V.menu.id, p_qty: KQ.V.qty, p_add: true }));
       await KQ.refreshCart();
@@ -147,7 +161,7 @@
           <div class="info"><b>${esc(m.menu_name)}</b><span class="muted sm">${money(m.price)}</span>
             ${low ? `<div><span class="badge red">${esc(m.stock <= 0 ? t('menu.out') : t('cart.stockLeft', { n: m.stock }))}</span></div>` : ''}
             <div class="row" style="margin-top:6px"><div class="qty">
-              <button data-act="cqty" data-id="${i.menu_id}" data-q="${i.quantity}" data-stock="${m.stock}" data-d="-1" ${i.quantity <= 1 ? 'disabled' : ''} aria-label="${esc(t('btn.minus'))}">${ic('minus')}</button><span>${i.quantity}</span>
+              <button data-act="cqty" data-id="${i.menu_id}" data-q="${i.quantity}" data-stock="${m.stock}" data-d="-1" ${i.quantity <= 1 ? 'disabled' : ''} aria-label="${esc(t('btn.minus'))}">${ic('minus')}</button><input class="qty-in" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" value="${i.quantity}" data-change="cqtyset" data-id="${i.menu_id}" data-q="${i.quantity}" data-stock="${m.stock}" onfocus="this.select()" aria-label="${esc(t('f.qty'))}" ${m.stock <= 0 ? 'disabled' : ''}>
               <button data-act="cqty" data-id="${i.menu_id}" data-q="${i.quantity}" data-stock="${m.stock}" data-d="1" ${i.quantity >= m.stock ? 'disabled' : ''} aria-label="${esc(t('btn.plus'))}">${ic('plus')}</button></div>
               <b>${money(i.quantity * m.price)}</b></div></div>
           <button class="iconbtn" data-act="cdel" data-id="${i.menu_id}" aria-label="${esc(t('btn.delete'))}">${ic('trash')}</button></div>`;
@@ -161,6 +175,17 @@
     if (n > st) return KQ.toast(t('err.EXCEEDS_STOCK'), 'err');
     await q(sb.rpc('cart_set', { p_menu: el.dataset.id, p_qty: n, p_add: false }));
     await KQ.refreshCart(); KQ.render({ keep: true });
+  };
+  KQ.inputs.cqtyset = async (el) => {
+    const stock = Number(el.dataset.stock), cur = Number(el.dataset.q);
+    const r = KQ.parseQty(el.value, stock);
+    if (r.n === null) { el.value = cur; return; }
+    if (r.over) KQ.toast(t('err.EXCEEDS_STOCK'), 'err');
+    if (r.n === cur) { el.value = cur; return; }
+    try {
+      await q(sb.rpc('cart_set', { p_menu: el.dataset.id, p_qty: r.n, p_add: false }));
+      await KQ.refreshCart(); KQ.render({ keep: true });
+    } catch (e) { el.value = cur; KQ.fail(e); }
   };
   KQ.acts.cdel = async (el) => {
     await q(sb.rpc('cart_set', { p_menu: el.dataset.id, p_qty: 0, p_add: false }));
